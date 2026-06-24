@@ -117,7 +117,10 @@ type Status struct {
 
 // Release represents information about a software release from GitHub.
 type Release struct {
-	TagName string `json:"tag_name"` // The tag name of the release
+	TagName         string `json:"tag_name"`         // The tag name of the release
+	Body            string `json:"body"`             // The release notes; the dev channel reads its commit from here
+	TargetCommitish string `json:"target_commitish"` // The branch/commit the tag points at
+	Prerelease      bool   `json:"prerelease"`       // Whether this is a pre-release
 }
 
 // ServerService provides business logic for server monitoring and management.
@@ -601,7 +604,7 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 		status.Xray.ErrorMsg = s.xrayService.GetXrayResult()
 	}
 	status.Xray.Version = s.xrayService.GetXrayVersion()
-	status.PanelVersion = config.GetVersion()
+	status.PanelVersion = config.GetReportedVersion()
 	if guid, err := s.settingService.GetPanelGuid(); err == nil {
 		status.PanelGuid = guid
 	}
@@ -2061,9 +2064,32 @@ func (s *ServerService) GetNewVlessEnc() (any, error) {
 		return nil, err
 	}
 
+	auths := parseVlessEncAuths(out.String())
+	auths = append(auths, deriveVlessEncModes(auths)...)
+
 	return map[string]any{
-		"auths": parseVlessEncAuths(out.String()),
+		"auths": auths,
 	}, nil
+}
+
+func deriveVlessEncModes(auths []map[string]string) []map[string]string {
+	var extra []map[string]string
+	for _, a := range auths {
+		for _, mode := range []string{"xorpub", "random"} {
+			dec := strings.Replace(a["decryption"], ".native.", "."+mode+".", 1)
+			enc := strings.Replace(a["encryption"], ".native.", "."+mode+".", 1)
+			if dec == a["decryption"] && enc == a["encryption"] {
+				continue
+			}
+			extra = append(extra, map[string]string{
+				"id":         a["id"] + "_" + mode,
+				"label":      a["label"] + " (" + mode + ")",
+				"decryption": dec,
+				"encryption": enc,
+			})
+		}
+	}
+	return extra
 }
 
 func parseVlessEncAuths(output string) []map[string]string {
