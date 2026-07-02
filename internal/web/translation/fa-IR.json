@@ -1396,7 +1396,12 @@
       "smtpErrorRelay": "سرور ارسال از این آدرس را رد می‌کند",
       "smtpErrorEof": "اتصال توسط سرور بسته شد",
       "smtpErrorUnknown": "خطای SMTP: {{ .Error }}",
-      "eventMemoryHigh": "مصرف حافظه بالا (%)"
+      "eventMemoryHigh": "مصرف حافظه بالا (%)",
+      "validation": {
+        "pathLeadingSlash": "مسیر باید با / شروع شود"
+      },
+      "secretClear": "پاک کردن",
+      "secretClearUndo": "لغو پاک کردن"
     },
     "xray": {
       "title": "پیکربندی ایکس‌ری",

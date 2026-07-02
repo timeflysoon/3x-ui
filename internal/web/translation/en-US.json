@@ -1512,7 +1512,12 @@
       "smtpErrorRelay": "Server rejects sending from this address",
       "smtpErrorEof": "Connection closed by server",
       "smtpErrorUnknown": "SMTP error: {{ .Error }}",
-      "eventMemoryHigh": "Memory high (%)"
+      "eventMemoryHigh": "Memory high (%)",
+      "validation": {
+        "pathLeadingSlash": "Path must start with /"
+      },
+      "secretClear": "Clear",
+      "secretClearUndo": "Undo clear"
     },
     "xray": {
       "title": "Xray Configs",
