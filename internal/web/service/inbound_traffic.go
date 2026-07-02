@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -125,7 +127,7 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 		return nil
 	}
 
-	dbClientTraffics, err = s.adjustTraffics(tx, dbClientTraffics)
+	dbClientTraffics, convertedExpiryByEmail, err := s.adjustTraffics(tx, dbClientTraffics)
 	if err != nil {
 		return err
 	}
@@ -161,22 +163,22 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 
 	// adjustTraffics converts delayed-start rows (negative ExpiryTime → absolute
 	// deadline) in-memory. Persist that conversion now since the traffic UPDATE
-	// above only touches up/down/last_online.
-	for _, ct := range dbClientTraffics {
-		if ct.ExpiryTime > 0 {
-			if err = tx.Exec(
-				`UPDATE client_traffics SET expiry_time = ? WHERE email = ? AND expiry_time < 0`,
-				ct.ExpiryTime, ct.Email,
-			).Error; err != nil {
-				logger.Warning("AddClientTraffic update expiry_time ", err)
-			}
+	// above only touches up/down/last_online. Only converted emails are written:
+	// updating every polled row issued one no-op UPDATE per active client per
+	// poll. Sorted order keeps concurrent writers lock-compatible on Postgres.
+	for _, email := range slices.Sorted(maps.Keys(convertedExpiryByEmail)) {
+		if err = tx.Exec(
+			`UPDATE client_traffics SET expiry_time = ? WHERE email = ? AND expiry_time < 0`,
+			convertedExpiryByEmail[email], email,
+		).Error; err != nil {
+			logger.Warning("AddClientTraffic update expiry_time ", err)
 		}
 	}
 
 	return nil
 }
 
-func (s *InboundService) adjustTraffics(tx *gorm.DB, dbClientTraffics []*xray.ClientTraffic) ([]*xray.ClientTraffic, error) {
+func (s *InboundService) adjustTraffics(tx *gorm.DB, dbClientTraffics []*xray.ClientTraffic) ([]*xray.ClientTraffic, map[string]int64, error) {
 	now := time.Now().UnixMilli()
 
 	// "Start After First Use" stores a negative expiry (the duration). On the
@@ -190,7 +192,7 @@ func (s *InboundService) adjustTraffics(tx *gorm.DB, dbClientTraffics []*xray.Cl
 		}
 	}
 	if len(newExpiryByEmail) == 0 {
-		return dbClientTraffics, nil
+		return dbClientTraffics, nil, nil
 	}
 
 	delayedEmails := make([]string, 0, len(newExpiryByEmail))
@@ -208,16 +210,16 @@ func (s *InboundService) adjustTraffics(tx *gorm.DB, dbClientTraffics []*xray.Cl
 		Distinct().
 		Pluck("client_inbounds.inbound_id", &inboundIds).Error
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(inboundIds) == 0 {
-		return dbClientTraffics, nil
+		return dbClientTraffics, nil, nil
 	}
 
 	var inbounds []*model.Inbound
 	err = tx.Model(model.Inbound{}).Where("id IN (?)", inboundIds).Find(&inbounds).Error
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for inbound_index := range inbounds {
 		settings := map[string]any{}
@@ -243,7 +245,7 @@ func (s *InboundService) adjustTraffics(tx *gorm.DB, dbClientTraffics []*xray.Cl
 			settings["clients"] = newClients
 			modifiedSettings, err := json.MarshalIndent(settings, "", "  ")
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 
 			inbounds[inbound_index].Settings = string(modifiedSettings)
@@ -276,7 +278,7 @@ func (s *InboundService) adjustTraffics(tx *gorm.DB, dbClientTraffics []*xray.Cl
 		}
 	}
 
-	return dbClientTraffics, nil
+	return dbClientTraffics, newExpiryByEmail, nil
 }
 
 func (s *InboundService) autoRenewClients(tx *gorm.DB) (bool, int64, error) {
@@ -926,14 +928,18 @@ func (s *InboundService) GetActiveClientTraffics(emails []string) ([]*xray.Clien
 		}
 		traffics = append(traffics, page...)
 	}
+	overlayGlobalTraffic(db, traffics)
 	return traffics, nil
 }
 
 // GetAllClientTraffics returns the full set of client_traffics rows so the
-// websocket broadcasters can ship a complete snapshot every cycle. The old
-// delta-only path (GetActiveClientTraffics on activeEmails) silently dropped
-// the per-client section whenever no client moved bytes in the cycle or a
-// node sync failed, leaving client rows in the UI stuck at stale numbers.
+// websocket broadcasters can ship a complete snapshot every cycle. A pure
+// delta path silently dropped the per-client section whenever no client moved
+// bytes in the cycle or a node sync failed, leaving client rows in the UI
+// stuck at stale numbers — so small installs broadcast this snapshot, and only
+// above the traffic job's snapshot threshold (where the marshaled snapshot
+// would exceed the hub's payload cap and be dropped wholesale) does the job
+// fall back to active-row deltas.
 func (s *InboundService) GetAllClientTraffics() ([]*xray.ClientTraffic, error) {
 	db := database.GetDB()
 	var traffics []*xray.ClientTraffic
@@ -942,6 +948,13 @@ func (s *InboundService) GetAllClientTraffics() ([]*xray.ClientTraffic, error) {
 	}
 	overlayGlobalTraffic(db, traffics)
 	return traffics, nil
+}
+
+func (s *InboundService) CountClientTraffics() (int64, error) {
+	db := database.GetDB()
+	var count int64
+	err := db.Model(xray.ClientTraffic{}).Count(&count).Error
+	return count, err
 }
 
 type InboundTrafficSummary struct {

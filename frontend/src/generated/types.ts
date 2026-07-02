@@ -394,10 +394,14 @@ export interface InboundFallback {
 
 export interface InboundOption {
   id: number;
+  listen?: string;
+  nodeAddress?: string;
   nodeId?: number | null;
   port: number;
   protocol: string;
   remark: string;
+  shareAddr?: string;
+  shareAddrStrategy?: string;
   ssMethod: string;
   tag: string;
   tlsFlowCapable: boolean;
@@ -462,6 +466,13 @@ export interface OutboundTraffics {
   tag: string;
   total: number;
   up: number;
+}
+
+export interface PanelUpdateStatus {
+  exitCode: number;
+  finishedAt: number;
+  runId: string;
+  state: string;
 }
 
 export interface ProbeResultUI {
