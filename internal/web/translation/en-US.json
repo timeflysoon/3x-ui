@@ -1872,6 +1872,12 @@
         "tagPlaceholder": "unique balancer tag",
         "selector": "Selector",
         "fallback": "Fallback",
+        "fallbackBalancerHint": "Select another balancer as fallback",
+        "balancerFallbackInfo": "Traffic will be routed through: Balancer → Loopback → Server → Target Balancer → Outbound. This adds an extra hop through the server, which may introduce slight delays.",
+        "balancerFallbackCycle": "Cannot set this balancer as fallback — it would create a circular dependency.",
+        "balancerDeleteInUse": "Cannot delete this balancer — it is used as fallback by: {names}",
+        "reservedPrefix": "_bl_ prefix is reserved for internal balancer loopback objects",
+        "cycleTooltip": "Cycle: {path} → (back to {start})",
         "expected": "Expected",
         "expectedPlaceholder": "optimal node count",
         "maxRtt": "Max RTT",
@@ -1983,7 +1989,9 @@
         "edit": "Edit Fake DNS",
         "ipPool": "IP Pool Subnet",
         "poolSize": "Pool Size"
-      }
+      },
+      "defaultOutbound": "Default Outbound",
+      "defaultOutboundDesc": "Traffic that does not match any routing rule uses this outbound (Xray uses the first outbound in the list)."
     }
   },
   "tgbot": {
