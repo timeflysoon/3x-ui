@@ -34,6 +34,13 @@ type InboundService struct {
 	fallbackService FallbackService
 }
 
+func normalizeTrafficResetDay(day int) int {
+	if day < 1 {
+		return 1
+	}
+	return min(day, 31)
+}
+
 func normalizeInboundShareAddrStrategy(strategy string) string {
 	strategy = strings.TrimSpace(strategy)
 	switch strategy {
@@ -713,6 +720,52 @@ func stripIncompleteXmcMasks(stream map[string]any) int {
 	return dropped
 }
 
+// dropEmptyRandPackets removes the leftover empty "packet" from finalmask
+// items that also carry a rand, and reports how many it cleared.
+//
+// xray-core treats even an empty array as a packet, and every item kind is
+// exclusive: noise refuses "len(item.Packet) > 0 && item.Rand.To > 0" and
+// header-custom refuses "exactly one item kind must be set". Either error
+// fails the whole config build, so one such item keeps every inbound offline.
+// The panel's mask editor wrote that pair whenever an item was switched to the
+// rand-driven array kind, so stored rows carry it; clearing an empty packet
+// changes nothing about the mask the admin configured.
+func dropEmptyRandPackets(node any) int {
+	switch value := node.(type) {
+	case map[string]any:
+		cleared := 0
+		if packet, ok := value["packet"].([]any); ok && len(packet) == 0 && randIsSet(value["rand"]) {
+			delete(value, "packet")
+			cleared++
+		}
+		for _, child := range value {
+			cleared += dropEmptyRandPackets(child)
+		}
+		return cleared
+	case []any:
+		cleared := 0
+		for _, child := range value {
+			cleared += dropEmptyRandPackets(child)
+		}
+		return cleared
+	default:
+		return 0
+	}
+}
+
+// randIsSet reports whether a finalmask item's rand selects a random packet.
+// It is a number on header-custom items and a dash-range string on noise ones.
+func randIsSet(value any) bool {
+	switch rand := value.(type) {
+	case float64:
+		return rand > 0
+	case string:
+		return rand != "" && rand != "0" && rand != "0-0"
+	default:
+		return false
+	}
+}
+
 // validateFinalMaskXmcProfiles rejects an xmc finalmask without complete
 // profiles at save time, so the admin gets a targeted error instead of a core
 // that refuses to start (or, after GetXrayConfig heals it, an inbound quietly
@@ -859,6 +912,7 @@ func (s *InboundService) normalizeMtprotoXrayPort(inbound *model.Inbound, oldSet
 // Returns the created inbound, whether Xray needs restart, and any error.
 func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, bool, error) {
 	inbound.Id = 0
+	inbound.TrafficResetDay = normalizeTrafficResetDay(inbound.TrafficResetDay)
 	// Normalize streamSettings based on protocol
 	s.normalizeStreamSettings(inbound)
 	if err := validateFinalMaskRealityCombo(inbound.StreamSettings); err != nil {
@@ -1285,6 +1339,7 @@ func (s *InboundService) SetInboundEnable(id int, enable bool) (bool, error) {
 }
 
 func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, bool, error) {
+	inbound.TrafficResetDay = normalizeTrafficResetDay(inbound.TrafficResetDay)
 	// Normalize streamSettings based on protocol
 	s.normalizeStreamSettings(inbound)
 	if err := validateFinalMaskRealityCombo(inbound.StreamSettings); err != nil {
@@ -1414,6 +1469,7 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 		oldInbound.Enable = inbound.Enable
 		oldInbound.ExpiryTime = inbound.ExpiryTime
 		oldInbound.TrafficReset = inbound.TrafficReset
+		oldInbound.TrafficResetDay = inbound.TrafficResetDay
 		oldInbound.Listen = inbound.Listen
 		oldInbound.Port = inbound.Port
 		oldInbound.Protocol = inbound.Protocol

@@ -270,6 +270,9 @@
           "subRoutingRules": {
             "type": "string"
           },
+          "subShowIdentityOnAllLinks": {
+            "type": "boolean"
+          },
           "subSupportUrl": {
             "type": "string"
           },
@@ -441,6 +444,7 @@
           "subPort",
           "subProfileUrl",
           "subRoutingRules",
+          "subShowIdentityOnAllLinks",
           "subSupportUrl",
           "subThemeDir",
           "subTitle",
@@ -737,6 +741,9 @@
           "subRoutingRules": {
             "type": "string"
           },
+          "subShowIdentityOnAllLinks": {
+            "type": "boolean"
+          },
           "subSupportUrl": {
             "type": "string"
           },
@@ -915,6 +922,7 @@
           "subPort",
           "subProfileUrl",
           "subRoutingRules",
+          "subShowIdentityOnAllLinks",
           "subSupportUrl",
           "subThemeDir",
           "subTitle",
@@ -1860,6 +1868,13 @@
             ],
             "type": "string"
           },
+          "trafficResetDay": {
+            "description": "Day of month for monthly traffic resets",
+            "example": 1,
+            "maximum": 31,
+            "minimum": 1,
+            "type": "integer"
+          },
           "up": {
             "description": "Upload traffic in bytes",
             "format": "int64",
@@ -1886,6 +1901,7 @@
           "tag",
           "total",
           "trafficReset",
+          "trafficResetDay",
           "up"
         ],
         "type": "object"
@@ -3151,6 +3167,7 @@
                       "tag": "in-443-tcp",
                       "total": 0,
                       "trafficReset": "never",
+                      "trafficResetDay": 1,
                       "up": 0
                     }
                   ]
@@ -5790,6 +5807,47 @@
             "description": "Client email (unique identifier).",
             "schema": {
               "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/clients/get/tgId/{tgId}": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Fetch clients by Telegram user ID. Returns an array since multiple clients can share the same Telegram ID.",
+        "operationId": "get_panel_api_clients_get_tgId_tgId",
+        "parameters": [
+          {
+            "name": "tgId",
+            "in": "path",
+            "required": true,
+            "description": "Telegram user ID (numeric).",
+            "schema": {
+              "type": "integer"
             }
           }
         ],
